@@ -1,0 +1,11 @@
+{
+  "name": "ffmpeg_project",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "Yonatan Bentzur",
+  "license": "MIT",
+  "private": false,
+  "dependencies": {
+    "child-process-promise": "^2.2.1"
+  }
+}

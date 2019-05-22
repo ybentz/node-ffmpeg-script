@@ -1,0 +1,8 @@
+node_modules
+.vscode
+
+# Media files
+*.jpg
+*.png
+*.mp4
+*.mts
