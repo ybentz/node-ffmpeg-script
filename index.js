@@ -1,6 +1,6 @@
 const path = require('path')
 const fs = require('fs')
-const spawn = require('child-process-promise').spawn
+const { spawn } = require('child-process-promise')
 
 const videoDirName = 'videos'
 const dirPath = path.join(__dirname, `${videoDirName}`)
@@ -13,6 +13,7 @@ fs.readdir(dirPath, (videoDirError, files) => {
     if (file.charAt(0) === '.') {
       return
     }
+    console.log(`Converting video: ${file}`)
     const fileName = file.substring(0, file.lastIndexOf('.'))
     const videoDirPath = path.join(__dirname, `${videoDirName}/`, `${fileName}`)
     makeDirIfDoesntExist(videoDirPath, async err => {
@@ -43,21 +44,40 @@ fs.readdir(dirPath, (videoDirError, files) => {
               'chromakey=0x70de77:0.19:0.0',
               `${videoDirName}/${fileName}/temp_${image}`,
             ])
-            // clean up temp images
-            fs.rename(
-              `${videoDirName}/${fileName}/temp_${image}`,
-              `${videoDirName}/${fileName}/${image}`,
-              renameError => {
-                if (renameError) {
-                  console.log(
-                    `Something went wrong renaming ${image} for cleanup: ${renameError}`
-                  )
-                }
-              }
-            )
           } catch (error) {
             console.log(error)
           }
+          try {
+            await spawn('ffmpeg', [
+              '-i',
+              `${videoDirName}/${fileName}/temp_${image}`,
+              '-vf',
+              'crop=512:900:240:40',
+              `${videoDirName}/${fileName}/cropped_${image}`,
+            ])
+          } catch (error) {
+            console.log(`Error cropping images: ${error}`)
+          }
+          // clean up temp images
+          fs.rename(
+            `${videoDirName}/${fileName}/cropped_${image}`,
+            `${videoDirName}/${fileName}/${image}`,
+            renameError => {
+              if (renameError) {
+                console.log(
+                  `Something went wrong renaming ${image} for cleanup: ${renameError}`
+                )
+              }
+            }
+          )
+          fs.unlink(
+            `${videoDirName}/${fileName}/temp_${image}`,
+            deleteError => {
+              if (deleteError) {
+                console.log(`Error trying to delete temp image ${deleteError}`)
+              }
+            }
+          )
         })
         console.log(`Done!`)
       })
