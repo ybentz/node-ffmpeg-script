@@ -1,99 +1,77 @@
-const path = require('path')
-const fs = require('fs')
 const { spawn } = require('child-process-promise')
+const fs = require('fs')
+const path = require('path')
+
+const { promisify } = require('util')
+const fsMkdir = promisify(fs.mkdir)
+const fsReaddir = promisify(fs.readdir)
+const fsRename = promisify(fs.rename)
+const fsUnlink = promisify(fs.unlink)
 
 const videoDirName = 'videos'
-const dirPath = `${videoDirName}`
+const dirPath = path.join(__dirname, videoDirName)
 
-fs.readdir(dirPath, (videoDirError, files) => {
-  if (videoDirError) {
-    return console.log('Unable to read videos directory: ' + videoDirError)
-  }
-  files.forEach(file => {
+fsReaddir(dirPath).then(async videos => {
+  for (const video of videos) {
     // skip hidden files on macOS
-    if (file.charAt(0) === '.') {
-      return
+    if (video.charAt(0) === '.') {
+      continue
     }
-    console.log(`Converting video: ${file}`)
-    const fileName = file.substring(0, file.lastIndexOf('.'))
-    const videoDirRelativePath = `${videoDirName}/${fileName}`
-    makeDirIfDoesntExist(videoDirRelativePath, async err => {
-      if (err) {
-        console.log(`Something went wrong creating folder for ${file}`)
-      }
-      try {
+    console.log(`Converting video: ${video}`)
+    const videoName = video.substring(0, video.lastIndexOf('.'))
+    const videoDirRelativePath = `${videoDirName}/${videoName}`
+    try {
+      await makeDirIfDoesntExist(videoDirRelativePath)
+      await spawn('ffmpeg', [
+        '-i',
+        `${videoDirName}/${video}`,
+        `${videoDirRelativePath}/${videoName}_%03d.png`,
+      ])
+      console.log(`Extracted frames`)
+      const images = await fsReaddir(videoDirRelativePath)
+      for (const image of images) {
+        // skip hidden files on macOS
+        if (image.charAt(0) === '.') {
+          continue
+        }
+        console.log(`Processing image: ${image}`)
         await spawn('ffmpeg', [
           '-i',
-          `${videoDirName}/${file}`,
-          `${videoDirRelativePath}/${fileName}_%03d.png`,
+          `${videoDirRelativePath}/${image}`,
+          '-vf',
+          'chromakey=0x70de77:0.19:0.0',
+          `${videoDirRelativePath}/temp_${image}`,
         ])
-      } catch (error) {
-        console.log(error)
+        await spawn('ffmpeg', [
+          '-i',
+          `${videoDirRelativePath}/temp_${image}`,
+          '-vf',
+          'crop=512:900:240:40',
+          `${videoDirRelativePath}/cropped_${image}`,
+        ])
+        await fsRename(
+          `${videoDirRelativePath}/cropped_${image}`,
+          `${videoDirRelativePath}/${image}`
+        )
+        await fsUnlink(`${videoDirRelativePath}/temp_${image}`)
+        console.log(`Successfully processed image: ${image}`)
       }
-      fs.readdir(videoDirRelativePath, (imageDirError, images) => {
-        if (videoDirError) {
-          return console.log(
-            'Unable to read images directory: ' + imageDirError
-          )
-        }
-        images.forEach(async image => {
-          try {
-            await spawn('ffmpeg', [
-              '-i',
-              `${videoDirRelativePath}/${image}`,
-              '-vf',
-              'chromakey=0x70de77:0.19:0.0',
-              `${videoDirRelativePath}/temp_${image}`,
-            ])
-          } catch (error) {
-            console.log(error)
-          }
-          try {
-            await spawn('ffmpeg', [
-              '-i',
-              `${videoDirRelativePath}/temp_${image}`,
-              '-vf',
-              'crop=512:900:240:40',
-              `${videoDirRelativePath}/cropped_${image}`,
-            ])
-          } catch (error) {
-            console.log(`Error cropping images: ${error}`)
-          }
-          // clean up temp images
-          fs.rename(
-            `${videoDirRelativePath}/cropped_${image}`,
-            `${videoDirRelativePath}/${image}`,
-            renameError => {
-              if (renameError) {
-                console.log(
-                  `Something went wrong renaming ${image} for cleanup: ${renameError}`
-                )
-              }
-            }
-          )
-          fs.unlink(`${videoDirRelativePath}/temp_${image}`, deleteError => {
-            if (deleteError) {
-              console.log(`Error trying to delete temp image ${deleteError}`)
-            }
-          })
-        })
-        console.log(`Done!`)
-      })
-    })
-  })
+    } catch (err) {
+      console.log(`Something went wrong for file '${video}'. Error: ${err}`)
+    }
+    console.log(`Successfully processed video: ${video}`)
+  }
+  console.log(`Done!`)
 })
 
-const makeDirIfDoesntExist = (relativePath, cb) => {
+const makeDirIfDoesntExist = async relativePath => {
   const absolutePath = path.join(__dirname, relativePath)
-  fs.mkdir(absolutePath, err => {
-    if (err) {
-      if (err.code == 'EEXIST') {
-        cb(null)
-      } else {
-        cb(err)
-      }
+  return fsMkdir(absolutePath).catch(err => {
+    if (err.code == 'EEXIST') {
+      // Folder exists, continue normally
+      return Promise.resolve()
     } else {
-      cb(null)
+      return Promise.reject(err)
     }
   })
 }
