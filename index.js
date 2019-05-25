@@ -34,27 +34,7 @@ fsReaddir(dirPath).then(async videos => {
         if (image.charAt(0) === '.') {
           continue
         }
-        console.log(`Processing image: ${image}`)
-        await spawn('ffmpeg', [
-          '-i',
-          `${videoDirRelativePath}/${image}`,
-          '-vf',
-          'chromakey=0x70de77:0.19:0.0',
-          `${videoDirRelativePath}/temp_${image}`,
-        ])
-        await spawn('ffmpeg', [
-          '-i',
-          `${videoDirRelativePath}/temp_${image}`,
-          '-vf',
-          'crop=512:900:240:40',
-          `${videoDirRelativePath}/cropped_${image}`,
-        ])
-        await fsRename(
-          `${videoDirRelativePath}/cropped_${image}`,
-          `${videoDirRelativePath}/${image}`
-        )
-        await fsUnlink(`${videoDirRelativePath}/temp_${image}`)
-        console.log(`Successfully processed image: ${image}`)
+        await processImage(videoDirRelativePath, image)
       }
     } catch (err) {
       console.log(`Something went wrong for file '${video}'. Error: ${err}`)
@@ -74,4 +54,25 @@ const makeDirIfDoesntExist = async relativePath => {
       return Promise.reject(err)
     }
   })
+}
+
+const processImage = async (dirPath, image) => {
+  console.log(`Processing image: ${image}`)
+  await spawn('ffmpeg', [
+    '-i',
+    `${dirPath}/${image}`,
+    '-vf',
+    'chromakey=0x70de77:0.19:0.0',
+    `${dirPath}/temp_${image}`,
+  ])
+  await spawn('ffmpeg', [
+    '-i',
+    `${dirPath}/temp_${image}`,
+    '-vf',
+    'crop=512:900:240:40',
+    `${dirPath}/cropped_${image}`,
+  ])
+  await fsRename(`${dirPath}/cropped_${image}`, `${dirPath}/${image}`)
+  await fsUnlink(`${dirPath}/temp_${image}`)
+  console.log(`Successfully processed image: ${image}`)
 }
